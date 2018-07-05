@@ -1,0 +1,12 @@
+32424测试const fs = require('fs');
+
+const rs = fs.createReadStream('./appbak.js');
+var chunkArr = [],
+    chunkLen = 0;
+rs.on('data',(chunk)=>{
+    chunkArr.push(chunk);
+    chunkLen+=chunk.length;
+});
+rs.on('end',(chunk)=>{
+    console.log(Buffer.concat(chunkArr,chunkLen).toString());
+});data to appenddata to appenddata to append

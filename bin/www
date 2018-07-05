@@ -1,0 +1,164 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var http = require('http'),
+    cluster = require('cluster'),
+    app = require('../app'),
+    io = require('../public/javascripts/socket'),
+    debug = require('debug')('node-3:server');
+GLOBAL.http = http
+GLOBAL.cluster = cluster
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort(process.env.PORT || '3000');
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(app);
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+if (cluster.isMaster) {
+  
+    console.log(`主进程 ${process.pid} 正在运行`);
+    const numCPUs = require('os').cpus().length;
+
+    for (let i = 0; i < numCPUs; i++) {
+      // 创建worker进程
+      var wk = cluster.fork();
+      wk.send(`[master]   hi worker ${wk.id}`);
+    }
+
+    // 监听创建worker进程事件
+    cluster.on('fork',(worker)=>{
+      console.log(`[master]   fork: worker ${worker.id}`);
+    });
+
+    // 监听worker创建成功事件
+    cluster.on('online',(worker)=>{
+        console.log(`[master]   online: worker ${worker.id}`);
+    });
+    // 监听worker断线事件
+    cluster.on('disconnect',(worker)=>{
+      console.log(`[master]   disconnect: worker ${worker.id}`);
+    });
+    // 监听worker向master状态事件
+    cluster.on('listening',(worker,address)=>{
+      console.log(`[master]   listening: worker${worker.id},pid: ${worker.process.pid}, Address: ${address.address }: ${address.port }`);
+    });
+    // 消息
+    cluster.on('message',(worker,msg)=>{
+      console.log(`[master]   got the worker${worker.id}'s msg：${msg}`);
+    });
+    // 监听worker退出事件
+    cluster.on('exit',(worker)=>{
+      console.log(`[master]   exit worker ${worker.id}  died`);
+    });
+  
+   
+    function eachWorker(callback) {
+      for (var id in cluster.workers) {
+          callback(cluster.workers[id]);
+      }
+  }
+
+    setTimeout(function () {
+        eachWorker(function (worker) {
+            worker.send(`[master]   send message to worker ${worker.id}`);
+        });
+    }, 3000);
+
+ 
+    Object.keys(cluster.workers).forEach((id)=>{
+        cluster.workers[id].send(`hello worker${id}`);
+    })
+
+  } else  {
+    
+    console.log(`[worker]  start worker ...${cluster.worker.id}`);
+    process.on('message', function(msg) {
+      console.log(`[worker]   ${cluster.worker.id}`);
+      console.log(`[worker]   ${msg}`);
+      process.send(`[worker]   worker${cluster.worker.id} received!`);
+  });
+   
+    server.listen(port);
+
+    server.on('error', onError);
+    // 监听master向worker状态事件
+    server.on('listening', onListening);
+    
+    io.getScoket(server)
+    console.log(`工作进程 ${process.pid} 已启动`);
+
+  }
+
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+
+  return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  var bind = typeof port === 'string'
+    ? 'Pipe ' + port
+    : 'Port ' + port;
+
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+  var addr = server.address();
+  var bind = typeof addr === 'string'
+    ? 'pipe ' + addr
+    : 'port ' + addr.port;
+  debug('Listening on ' + bind);
+}
